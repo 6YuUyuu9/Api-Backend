@@ -10,43 +10,47 @@ class Queue
     }
 
     // เพิ่มคิวใหม่
-    // เพิ่มคิวใหม่ โดยรับค่าเวลาจองมาด้วย
     public function create($user_id, $table_id, $person_count, $reserve_date)
-    {
-        // 1. กำหนด Prefix ตามจำนวนคน
-        $prefix = ($person_count <= 4) ? "A" : "B";
+{
+    // --- เพิ่มบรรทัดนี้เพื่อ Clean Format เวลา ---
+    // ไม่ว่าหน้าบ้านจะส่ง "2026-03-29 04:41 PM" หรือ "2026-03-29 16:41"
+    // ฟังก์ชันนี้จะตบให้เป็น "2026-03-29 16:41:00" เสมอ
+    $clean_date = date('Y-m-d H:i:s', strtotime($reserve_date));
+    // ---------------------------------------
 
-        // 2. นับจำนวนคิวของวันที่ส่งมา (เพื่อให้ Reset เลขตามวันที่จองจริง)
-        $check_date = date('Y-m-d', strtotime($reserve_date));
-        $sql_count = "SELECT COUNT(*) as total FROM " . $this->table . " 
-                  WHERE DATE(reserve_date) = :today 
+    $prefix = ($person_count <= 4) ? "A" : "B";
+
+    // ใช้ $clean_date ในการหา Date สำหรับนับคิว
+    $target_date = date('Y-m-d', strtotime($clean_date));
+
+    $sql_count = "SELECT COUNT(*) as total FROM " . $this->table . " 
+                  WHERE DATE(reserve_date) = :target_date 
                   AND queue_name LIKE :prefix";
 
-        $stmt_count = $this->conn->prepare($sql_count);
-        $search_prefix = $prefix . "%";
-        $stmt_count->bindParam(':today', $check_date);
-        $stmt_count->bindParam(':prefix', $search_prefix);
-        $stmt_count->execute();
-        $row = $stmt_count->fetch(PDO::FETCH_ASSOC);
+    $stmt_count = $this->conn->prepare($sql_count);
+    $search_prefix = $prefix . "%";
+    $stmt_count->bindParam(':target_date', $target_date);
+    $stmt_count->bindParam(':prefix', $search_prefix);
+    $stmt_count->execute();
+    $row = $stmt_count->fetch(PDO::FETCH_ASSOC);
 
-        // 3. รันเลขคิว
-        $next_number = $row['total'] + 1;
-        $queue_name = $prefix . str_pad($next_number, 2, "0", STR_PAD_LEFT);
+    $next_number = $row['total'] + 1;
+    $queue_name = $prefix . str_pad($next_number, 2, "0", STR_PAD_LEFT);
 
-        // 4. บันทึกข้อมูล (เปลี่ยนจาก NOW() เป็น :reserve_date)
-        $sql = "INSERT INTO " . $this->table . " 
-        (queue_name, user_id, table_id, person_count, status_id, reserve_date) 
-        VALUES (:q_name, :u_id, :t_id, :count, 1, :reserve_date)";
+    // ตอน Insert ก็ใช้ $clean_date
+    $sql = "INSERT INTO " . $this->table . " 
+            (queue_name, user_id, table_id, person_count, status_id, reserve_date) 
+            VALUES (:q_name, :u_id, :t_id, :count, 1, :reserve_date)";
 
-        $stmt = $this->conn->prepare($sql);
-        $stmt->bindParam(':q_name', $queue_name);
-        $stmt->bindParam(':u_id', $user_id);
-        $stmt->bindParam(':t_id', $table_id);
-        $stmt->bindParam(':count', $person_count);
-        $stmt->bindParam(':reserve_date', $reserve_date); // รับค่าจากหน้าบ้าน
+    $stmt = $this->conn->prepare($sql);
+    $stmt->bindParam(':q_name', $queue_name);
+    $stmt->bindParam(':u_id', $user_id);
+    $stmt->bindParam(':t_id', $table_id);
+    $stmt->bindParam(':count', $person_count);
+    $stmt->bindParam(':reserve_date', $clean_date); // ใช้ตัวที่ Clean แล้ว
 
-        return $stmt->execute();
-    }
+    return $stmt->execute();
+}
 
     // ดึงคิวทั้งหมด พร้อมรายละเอียดชื่อผู้ใช้และประเภทโต๊ะ
     public function getAllQueues()

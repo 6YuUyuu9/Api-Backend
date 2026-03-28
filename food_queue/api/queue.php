@@ -22,19 +22,33 @@ $data = json_decode(file_get_contents("php://input"), true) ?? [];
 
 // 1. จองคิวใหม่ (POST)
 if ($method === 'POST' && preg_match('#queue.php/add#', $url)) {
-    // รับค่า reserve_date จาก JSON body ถ้าไม่มีให้ใช้เวลาปัจจุบันของ Server เป็น fallback
-    $reserve_date = isset($data['reserve_date']) ? $data['reserve_date'] : date('Y-m-d H:i:s');
+    
+    // ตรวจสอบว่าหน้าบ้านส่ง Date และ Time แยกกันมาหรือไม่
+    if (isset($data['date']) && isset($data['time'])) {
+        // กรณีส่งแยก: "2026-03-29" + "16:41" -> "2026-03-29 16:41:00"
+        $reserve_date = $data['date'] . ' ' . $data['time'] . ':00';
+    } 
+    // ถ้าส่งมารวมกันในฟิลด์เดียว (reserve_date)
+    elseif (isset($data['reserve_date'])) {
+        $reserve_date = $data['reserve_date'];
+    } 
+    // ถ้าไม่ส่งอะไรมาเลย ให้ใช้เวลาปัจจุบันของ Server
+    else {
+        $reserve_date = date('Y-m-d H:i:s');
+    }
 
+    // เรียกฟังก์ชัน create โดยส่งค่าที่จัดการแล้วเข้าไป
     $result = $queue->create(
         $data['user_id'], 
         $data['table_id'], 
         $data['person_count'], 
-        $reserve_date // ส่งตัวแปรเวลาที่รับมาเข้าไปด้วย
+        $reserve_date
     );
 
     echo json_encode([
         'success' => $result,
-        'message' => $result ? 'Queue added' : 'Failed to add queue'
+        'message' => $result ? 'Queue added' : 'Failed to add queue',
+        'debug_date' => $reserve_date // ใส่ไว้ดูเพื่อตรวจสอบค่าที่ถูกบันทึก (ลบออกได้ภายหลัง)
     ]);
     exit();
 }
