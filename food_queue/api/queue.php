@@ -22,7 +22,16 @@ $data = json_decode(file_get_contents("php://input"), true) ?? [];
 
 // 1. จองคิวใหม่ (POST)
 if ($method === 'POST' && preg_match('#queue.php/add#', $url)) {
-    $result = $queue->create($data['user_id'], $data['table_id'], $data['person_count']);
+    // รับค่า reserve_date จาก JSON body ถ้าไม่มีให้ใช้เวลาปัจจุบันของ Server เป็น fallback
+    $reserve_date = isset($data['reserve_date']) ? $data['reserve_date'] : date('Y-m-d H:i:s');
+
+    $result = $queue->create(
+        $data['user_id'], 
+        $data['table_id'], 
+        $data['person_count'], 
+        $reserve_date // ส่งตัวแปรเวลาที่รับมาเข้าไปด้วย
+    );
+
     echo json_encode([
         'success' => $result,
         'message' => $result ? 'Queue added' : 'Failed to add queue'

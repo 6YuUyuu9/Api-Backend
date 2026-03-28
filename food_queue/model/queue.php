@@ -10,41 +10,40 @@ class Queue
     }
 
     // เพิ่มคิวใหม่
-    public function create($user_id, $table_id, $person_count)
+    // เพิ่มคิวใหม่ โดยรับค่าเวลาจองมาด้วย
+    public function create($user_id, $table_id, $person_count, $reserve_date)
     {
         // 1. กำหนด Prefix ตามจำนวนคน
-        // ตัวอย่าง: 1-4 คน = A (โต๊ะเล็ก), 5 คนขึ้นไป = B (โต๊ะใหญ่)
         $prefix = ($person_count <= 4) ? "A" : "B";
 
-        // 2. นับจำนวนคิวของ "วันนี้" เฉพาะกลุ่ม (Prefix) นั้นๆ
-        $today = date('Y-m-d');
+        // 2. นับจำนวนคิวของวันที่ส่งมา (เพื่อให้ Reset เลขตามวันที่จองจริง)
+        $check_date = date('Y-m-d', strtotime($reserve_date));
         $sql_count = "SELECT COUNT(*) as total FROM " . $this->table . " 
                   WHERE DATE(reserve_date) = :today 
                   AND queue_name LIKE :prefix";
 
         $stmt_count = $this->conn->prepare($sql_count);
         $search_prefix = $prefix . "%";
-        $stmt_count->bindParam(':today', $today);
+        $stmt_count->bindParam(':today', $check_date);
         $stmt_count->bindParam(':prefix', $search_prefix);
         $stmt_count->execute();
         $row = $stmt_count->fetch(PDO::FETCH_ASSOC);
 
-        // 3. รันเลขต่อจากลำดับเดิม (Reset ทุกวันเพราะเช็คจาก :today)
+        // 3. รันเลขคิว
         $next_number = $row['total'] + 1;
-
-        // ใช้ str_pad เพื่อให้เป็น A01, A02 (ดูเป็นระเบียบกว่า A1, A2)
         $queue_name = $prefix . str_pad($next_number, 2, "0", STR_PAD_LEFT);
 
-        // 4. บันทึกข้อมูลลงฐานข้อมูล
+        // 4. บันทึกข้อมูล (เปลี่ยนจาก NOW() เป็น :reserve_date)
         $sql = "INSERT INTO " . $this->table . " 
-            (queue_name, user_id, table_id, person_count, status_id, reserve_date) 
-            VALUES (:q_name, :u_id, :t_id, :count, 1, NOW())";
+        (queue_name, user_id, table_id, person_count, status_id, reserve_date) 
+        VALUES (:q_name, :u_id, :t_id, :count, 1, :reserve_date)";
 
         $stmt = $this->conn->prepare($sql);
         $stmt->bindParam(':q_name', $queue_name);
         $stmt->bindParam(':u_id', $user_id);
         $stmt->bindParam(':t_id', $table_id);
         $stmt->bindParam(':count', $person_count);
+        $stmt->bindParam(':reserve_date', $reserve_date); // รับค่าจากหน้าบ้าน
 
         return $stmt->execute();
     }
