@@ -55,6 +55,7 @@ class Queue
         // ตรวจสอบว่ามี q.arrive_at และ q.complete_at ใน SELECT หรือยัง
         $sql = "SELECT 
                 q.queue_id, 
+                q.queue_name,
                 u.username, 
                 t.table_name, 
                 tt.type_name, 
