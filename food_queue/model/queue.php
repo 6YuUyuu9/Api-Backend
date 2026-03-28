@@ -59,6 +59,7 @@ class Queue
         $sql = "SELECT 
                 q.queue_id, 
                 q.queue_name,
+                q.user_id, 
                 u.username, 
                 t.table_name, 
                 tt.type_name, 
@@ -66,8 +67,8 @@ class Queue
                 s.status_name, 
                 q.status_id,
                 q.reserve_date, 
-                q.arrive_at,    -- << ต้องมีตัวนี้
-                q.complete_at   -- << ต้องมีตัวนี้
+                q.arrive_at, 
+                q.complete_at
             FROM " . $this->table . " q
             JOIN users u ON q.user_id = u.user_id
             JOIN tables t ON q.table_id = t.table_id
