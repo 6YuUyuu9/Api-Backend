@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Full System Demo - Food Queue</title>
+    <style>
+        :root { --primary: #007bff; --success: #28a745; --info: #17a2b8; --warning: #ffc107; --danger: #dc3545; }
+        body { font-family: 'Inter', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        .dashboard { max-width: 1200px; margin: auto; display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        h2 { border-bottom: 2px solid #eee; padding-bottom: 10px; margin-top: 0; font-size: 1.2rem; color: #333; }
+        
+        /* Form elements */
+        input, select, button { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        button { cursor: pointer; border: none; font-weight: bold; color: white; transition: 0.3s; }
+        .btn-primary { background: var(--primary); }
+        .btn-success { background: var(--success); }
+        .btn-info { background: var(--info); }
+        .btn-outline { background: transparent; border: 1px solid #ddd; color: #666; }
+        button:hover { opacity: 0.8; }
+
+        /* Table Style */
+        table { width: 100%; border-collapse: collapse; background: white; font-size: 14px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #fafafa; color: #666; }
+        .status-pill { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: bold; }
+        .status-1 { background: #e3f2fd; color: #1976d2; } /* Reserved */
+        .status-arrived { background: #e8f5e9; color: #2e7d32; }
+        .status-3 { background: #f5f5f5; color: #616161; } /* Completed */
+        
+        .debug-console { background: #222; color: #0f0; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; height: 150px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<h1 style="text-align:center;">🍴 ระบบจัดการคิวอาหาร (Full Test Demo)</h1>
+
+<div class="dashboard">
+    
+    <div class="side-panel">
+        <div class="card">
+            <h2>👤 จัดการสมาชิก</h2>
+            <input type="text" id="u_name" placeholder="Username">
+            <input type="password" id="u_pass" placeholder="Password">
+            <button class="btn-primary" onclick="userAction('register')">ลงทะเบียน</button>
+            <button class="btn-outline" onclick="userAction('login')">ทดสอบ Login</button>
+            <p id="user_info" style="font-size:12px; color:var(--success)"></p>
+        </div>
+
+        <div class="card">
+            <h2>🪑 จัดการโต๊ะ</h2>
+            <input type="text" id="t_name" placeholder="ชื่อโต๊ะ (เช่น A1, B2)">
+            <select id="t_type">
+                <option value="1">สำหรับ 2 ท่าน (for2)</option>
+                <option value="2">สำหรับ 4 ท่าน (for4)</option>
+                <option value="3">สำหรับ 6 ท่าน (for6)</option>
+            </select>
+            <button class="btn-success" onclick="tableAction('add')">เพิ่มโต๊ะ</button>
+            <button class="btn-outline" onclick="loadTables()">รีเฟรชรายการโต๊ะ</button>
+            <div id="table_mini_list" style="max-height:100px; overflow:auto; font-size:12px; margin-top:10px;"></div>
+        </div>
+
+        <div class="card">
+            <h2>📟 Debug Console</h2>
+            <div id="console" class="debug-console">Ready...</div>
+        </div>
+    </div>
+
+    <div class="main-panel">
+        <div class="card">
+            <h2>📝 จองคิวใหม่</h2>
+            <div style="display:flex; gap:10px;">
+                <input type="number" id="q_uid" placeholder="User ID">
+                <input type="number" id="q_tid" placeholder="Table ID">
+                <input type="number" id="q_count" placeholder="จำนวนคน">
+            </div>
+            <button class="btn-primary" style="background: #6610f2;" onclick="queueAction('add')">บันทึกการจองคิว</button>
+        </div>
+
+        <div class="card">
+            <div style="display:flex; justify-content: space-between; align-items: center;">
+                <h2>📊 ตารางคิวปัจจุบัน</h2>
+                <button class="btn-outline" style="width:auto;" onclick="loadQueues()">🔄 รีเฟรชข้อมูลคิว</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>คิว</th>
+                        <th>ลูกค้า / โต๊ะ</th>
+                        <th>สถานะ</th>
+                        <th>เวลาบันทึก (Reserve / Arrive / Finish)</th>
+                        <th>จัดการ</th>
+                    </tr>
+                </thead>
+                <tbody id="queue_body"></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const BASE_URL = '/food_queue/api'; // *** ปรับให้ตรงกับ Folder โปรเจกต์คุณ ***
+
+    // --- Helper Functions ---
+    function log(msg) {
+        const con = document.getElementById('console');
+        con.innerHTML += `> ${msg}<br>`;
+        con.scrollTop = con.scrollHeight;
+    }
+
+    async function api(path, method = 'GET', body = null) {
+        log(`Calling: ${path} [${method}]`);
+        const options = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body) options.body = JSON.stringify(body);
+        
+        try {
+            const res = await fetch(`${BASE_URL}${path}`, options);
+            const json = await res.json();
+            return json;
+        } catch (e) {
+            log(`Error: ${e.message}`);
+            return { success: false };
+        }
+    }
+
+    // --- User Actions ---
+    async function userAction(type) {
+        const data = { username: document.getElementById('u_name').value, password: document.getElementById('u_pass').value };
+        const res = await api(`/user.php/${type}`, 'POST', data);
+        if(res.success) {
+            log(`${type} สำเร็จ!`);
+            if(res.user) document.getElementById('user_info').innerText = `Logged in as ID: ${res.user.user_id}`;
+        }
+    }
+
+    // --- Table Actions ---
+    async function loadTables() {
+        const data = await api('/table.php/list');
+        const list = document.getElementById('table_mini_list');
+        list.innerHTML = data.map(t => `<div>ID:${t.table_id} | ${t.table_name} (${t.type_name})</div>`).join('');
+    }
+
+    async function tableAction(type) {
+        const data = { table_name: document.getElementById('t_name').value, type_id: document.getElementById('t_type').value };
+        await api('/table.php/add', 'POST', data);
+        loadTables();
+    }
+
+    // --- Queue Actions ---
+    async function loadQueues() {
+    // 1. ดึงข้อมูลใหม่ (ใส่ timestamp กัน cache)
+    const data = await api('/queue.php/list?t=' + Date.now());
+    
+    // 2. DEBUG: ดูข้อมูลที่ได้จาก PHP ใน Console (กด F12 ดู)
+    console.log("ข้อมูลจาก API:");
+    console.table(data); 
+
+    const body = document.getElementById('queue_body');
+    
+    // 3. วาดตารางใหม่
+    body.innerHTML = data.map(q => {
+        // ตรวจสอบค่า NULL หรือ String ว่าง
+        const hasArrived = q.arrive_at && q.arrive_at !== "0000-00-00 00:00:00";
+        const hasFinished = q.complete_at && q.complete_at !== "0000-00-00 00:00:00";
+
+        return `
+            <tr>
+                <td>#${q.queue_id}</td>
+                <td><b>${q.username}</b><br><small>โต๊ะ ${q.table_name}</small></td>
+                <td><span class="status-pill status-${q.status_id}">${q.status_name}</span></td>
+                <td style="font-size:11px; color:#666;">
+                    จอง: ${q.reserve_date || '-'}<br>
+                    <b style="color:green">มาถึง: ${q.arrive_at || '-'}</b><br>
+                    <b style="color:blue">เสร็จ: ${q.complete_at || '-'}</b>
+                </td>
+                <td>
+                    ${!hasArrived ? 
+                        `<button class="btn-success" style="padding:5px;" onclick="updateQueue(${q.queue_id}, 'arrive')">Check-in</button>` 
+                        : ''}
+                    
+                    ${(hasArrived && !hasFinished) ? 
+                        `<button class="btn-info" style="padding:5px;" onclick="updateQueue(${q.queue_id}, 'complete')">Finish</button>` 
+                        : ''}
+
+                    ${hasFinished ? `<span style="color:gray">✓ เสร็จสิ้น</span>` : ''}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+    async function queueAction(type) {
+        const data = { 
+            user_id: document.getElementById('q_uid').value, 
+            table_id: document.getElementById('q_tid').value, 
+            person_count: document.getElementById('q_count').value 
+        };
+        const res = await api('/queue.php/add', 'POST', data);
+        if(res.success) loadQueues();
+    }
+
+    async function updateQueue(id, type) {
+        const res = await api(`/queue.php/${type}`, 'POST', { queue_id: id });
+        if(res.success) loadQueues();
+    }
+
+    // Initial Load
+    loadTables();
+    loadQueues();
+
+</script>
+</body>
+</html>
