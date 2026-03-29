@@ -72,6 +72,24 @@ if ($method === 'GET' && preg_match('#queue.php/list#', $url)) {
     exit();
 }
 
+// ดูสรุปคิวของวัน (คิวล่าสุด และ จำนวนที่เหลือ) (GET)
+// ตัวอย่าง URL: queue.php/summary?date=2026-03-29
+if ($method === 'GET' && preg_match('#queue.php/summary#', $url)) {
+    // ถ้าไม่ส่งวันที่มา ให้ใช้วันที่ปัจจุบัน
+    $target_date = $_GET['date'] ?? date('Y-m-d');
+
+    $latest = $queue->getLatestQueueByDate($target_date);
+    $remaining = $queue->getRemainingQueueCount($target_date);
+
+    echo json_encode([
+        'success' => true,
+        'target_date' => $target_date,
+        'latest_queue' => $latest,
+        'remaining_count' => $remaining
+    ]);
+    exit();
+}
+
 // 5. แก้ไขข้อมูลคิว (POST)
 if ($method === 'POST' && preg_match('#queue.php/update$#', $url)) {
     $result = $queue->update(

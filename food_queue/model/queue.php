@@ -93,6 +93,30 @@ class Queue
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    // ดึงคิวล่าสุดของวันที่ระบุ (เช่น A05, B02)
+    public function getLatestQueueByDate($date)
+    {
+        $sql = "SELECT queue_name FROM " . $this->table . " 
+                WHERE DATE(reserve_date) = :target_day 
+                ORDER BY queue_id DESC LIMIT 1";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute([':target_day' => $date]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? $row['queue_name'] : "ยังไม่มีคิว";
+    }
+
+    // นับจำนวนคิวที่ยังไม่ได้เรียก (status_id = 1) ของวันที่ระบุ
+    public function getRemainingQueueCount($date)
+    {
+        $sql = "SELECT COUNT(*) as remaining FROM " . $this->table . " 
+                WHERE DATE(reserve_date) = :target_day 
+                AND status_id = 1";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute([':target_day' => $date]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? (int)$row['remaining'] : 0;
+    }
+
     // แก้ไขข้อมูลคิว (เช่น เปลี่ยนโต๊ะ หรือ จำนวนคน)
     public function update($queue_id, $table_id, $person_count)
     {
