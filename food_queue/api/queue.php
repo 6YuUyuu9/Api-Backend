@@ -118,64 +118,28 @@ if ($method === 'DELETE' && preg_match('#queue.php/delete#', $url)) {
 }
 
 // 5. Match โต๊ะอัตโนมัติ
-if ($method === 'POST' && preg_match('#queue.php/find-table#', $url)) {
-    $date = $data['date'];
-    $arriveTime = $data['arrive_time'];
+if ($method === 'POST' && preg_match('#queue\.php/find-table#', $url)) {
+    $date        = $data['date'];
+    $arriveTime  = $data['arrive_time'];
     $personCount = (int)$data['person_count'];
+    $reserve_datetime = $date . ' ' . $arriveTime . ':00';
 
-    // หาโต๊ะที่ถูกจองในช่วงเวลาเดียวกัน (±1 ชั่วโมง)
-    $bookedQuery = "
-        SELECT DISTINCT table_id 
-        FROM queue 
-        WHERE DATE(reserve_date) = :date
-        AND ABS(TIMESTAMPDIFF(MINUTE, arrive_at, CONCAT(:date2, ' ', :time))) < 60
-        AND status_id != 3
-    ";
-    $stmt = $conn->prepare($bookedQuery);
-    $stmt->execute([':date' => $date, ':date2' => $date, ':time' => $arriveTime]);
-    $bookedTableIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $matched = $queue->autoMatchTable($personCount, $reserve_datetime);
 
-    // หาโต๊ะที่ว่าง โดย match type_name กับจำนวนคน
-    if ($personCount <= 2) {
-        $minType = 'for2';
-    } elseif ($personCount <= 4) {
-        $minType = 'for4';
+    if ($matched !== null) {
+        echo json_encode([
+            'success'  => true,
+            'available' => true,
+            'table_id' => $matched,
+            'table'     => ['table_id' => $matched], 
+            'message'  => "มีโต๊ะว่าง (table_id: $matched)"
+        ]);
     } else {
-        $minType = 'for6';
-    }
-
-    if (count($bookedTableIds) > 0) {
-        $placeholders = implode(',', array_fill(0, count($bookedTableIds), '?'));
-        $tableQuery = "
-            SELECT t.table_id, t.table_name, tt.type_name
-            FROM tables t
-            JOIN table_type tt ON t.type_id = tt.type_id
-            WHERE t.table_id NOT IN ($placeholders)
-            AND CAST(SUBSTRING(tt.type_name, 4) AS UNSIGNED) >= ?
-            ORDER BY CAST(SUBSTRING(tt.type_name, 4) AS UNSIGNED) ASC
-            LIMIT 1
-        ";
-        $stmt2 = $conn->prepare($tableQuery);
-        $stmt2->execute(array_merge($bookedTableIds, [$personCount]));
-    } else {
-        $tableQuery = "
-            SELECT t.table_id, t.table_name, tt.type_name
-            FROM tables t
-            JOIN table_type tt ON t.type_id = tt.type_id
-            WHERE CAST(SUBSTRING(tt.type_name, 4) AS UNSIGNED) >= ?
-            ORDER BY CAST(SUBSTRING(tt.type_name, 4) AS UNSIGNED) ASC
-            LIMIT 1
-        ";
-        $stmt2 = $conn->prepare($tableQuery);
-        $stmt2->execute([$personCount]);
-    }
-
-    $table = $stmt2->fetch(PDO::FETCH_ASSOC);
-
-    if ($table) {
-        echo json_encode(['success' => true, 'table' => $table]);
-    } else {
-        echo json_encode(['success' => false, 'message' => 'ไม่มีโต๊ะว่างในช่วงเวลานี้']);
+        echo json_encode([
+            'success'  => false,
+            'available' => false,
+            'message'  => 'ไม่มีโต๊ะว่างในช่วงเวลานี้'
+        ]);
     }
     exit();
 }
