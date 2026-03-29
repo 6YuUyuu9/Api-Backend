@@ -119,14 +119,21 @@ class Queue
     // นับจำนวนคิวที่ยังไม่ได้เรียก (status_id = 1) ของวันที่ระบุ
     public function getRemainingQueueCount($date)
     {
-        $sql = "SELECT COUNT(*) as remaining FROM " . $this->table . " 
+        // 1. หาจำนวนคิวทั้งหมดที่มีสถานะเป็น 1 (Reserved) ในวันนั้น
+        $sql_all = "SELECT COUNT(*) as total FROM " . $this->table . " 
                 WHERE DATE(reserve_date) = :target_day 
-                AND status_id = 1
-                AND reserve_date > NOW()";
-        $stmt = $this->conn->prepare($sql);
+                AND status_id = 1";
+
+        $stmt = $this->conn->prepare($sql_all);
         $stmt->execute([':target_day' => $date]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ? (int)$row['remaining'] : 0;
+        $total_waiting = $row ? (int)$row['total'] : 0;
+
+        // 2. ถ้ามีคิวรออยู่ (มากกว่า 0) ให้ลบออก 1 
+        // เพื่อไม่นับคิวที่แสดงอยู่ในช่อง "คิวที่ใกล้ถึงเวลาที่สุด"
+        $remaining = ($total_waiting > 0) ? ($total_waiting - 1) : 0;
+
+        return $remaining;
     }
 
     // แก้ไขข้อมูลคิว (เช่น เปลี่ยนโต๊ะ หรือ จำนวนคน)
