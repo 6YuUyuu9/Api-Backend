@@ -12,42 +12,47 @@ class Queue
     // เพิ่มคิวใหม่
     public function create($user_id, $table_id, $person_count, $reserve_date)
 {
-    // --- เพิ่มบรรทัดนี้เพื่อ Clean Format เวลา ---
-    // ไม่ว่าหน้าบ้านจะส่ง "2026-03-29 04:41 PM" หรือ "2026-03-29 16:41"
-    // ฟังก์ชันนี้จะตบให้เป็น "2026-03-29 16:41:00" เสมอ
-    $clean_date = date('Y-m-d H:i:s', strtotime($reserve_date));
-    // ---------------------------------------
-
+    // กำหนด Prefix
     $prefix = ($person_count <= 4) ? "A" : "B";
 
-    // ใช้ $clean_date ในการหา Date สำหรับนับคิว
-    $target_date = date('Y-m-d', strtotime($clean_date));
+    // เปลี่ยน / เป็น - เพื่อให้ strtotime เข้าใจฟอร์แมต 03/29/2026 ได้ถูกต้อง
+    $date_string = str_replace('/', '-', $reserve_date);
+    
+    // แปลงเป็น Timestamp
+    $ts = strtotime($date_string);
+    
+    // สร้างวันที่สะอาดๆ สำหรับลง DB (YYYY-MM-DD HH:mm:ss)
+    $clean_date = date('Y-m-d H:i:s', $ts);
+    
+    // สร้างวันที่สำหรับนับคิว (Target Date)
+    $target_day = date('Y-m-d', $ts);
 
+    // --- ส่วนรันเลขคิว ---
     $sql_count = "SELECT COUNT(*) as total FROM " . $this->table . " 
-                  WHERE DATE(reserve_date) = :target_date 
+                  WHERE DATE(reserve_date) = :target_day 
                   AND queue_name LIKE :prefix";
 
     $stmt_count = $this->conn->prepare($sql_count);
     $search_prefix = $prefix . "%";
-    $stmt_count->bindParam(':target_date', $target_date);
+    $stmt_count->bindParam(':target_day', $target_day);
     $stmt_count->bindParam(':prefix', $search_prefix);
     $stmt_count->execute();
     $row = $stmt_count->fetch(PDO::FETCH_ASSOC);
 
-    $next_number = $row['total'] + 1;
-    $queue_name = $prefix . str_pad($next_number, 2, "0", STR_PAD_LEFT);
+    $next_num = ($row['total'] ?? 0) + 1;
+    $queue_name = $prefix . str_pad($next_num, 2, "0", STR_PAD_LEFT);
 
-    // ตอน Insert ก็ใช้ $clean_date
+    // --- ส่วน INSERT ---
     $sql = "INSERT INTO " . $this->table . " 
             (queue_name, user_id, table_id, person_count, status_id, reserve_date) 
-            VALUES (:q_name, :u_id, :t_id, :count, 1, :reserve_date)";
+            VALUES (:q_name, :u_id, :t_id, :count, 1, :r_date)";
 
     $stmt = $this->conn->prepare($sql);
     $stmt->bindParam(':q_name', $queue_name);
     $stmt->bindParam(':u_id', $user_id);
     $stmt->bindParam(':t_id', $table_id);
     $stmt->bindParam(':count', $person_count);
-    $stmt->bindParam(':reserve_date', $clean_date); // ใช้ตัวที่ Clean แล้ว
+    $stmt->bindParam(':r_date', $clean_date); // ใช้ค่าที่ Clean แล้วเท่านั้น
 
     return $stmt->execute();
 }
