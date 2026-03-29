@@ -165,4 +165,48 @@ class Queue
         $stmt->bindParam(':queue_id', $queue_id);
         return $stmt->execute();
     }
+
+    public function autoMatchTable(int $person_count, string $reserve_date): ?int
+{
+    // 1. หา type_id ตามจำนวนคน
+    if ($person_count <= 2) {
+        $type_id = 1; // for2
+    } elseif ($person_count <= 4) {
+        $type_id = 2; // for4
+    } else {
+        $type_id = 3; // for6
+    }
+
+    // 2. ดึงโต๊ะทุกโต๊ะในประเภทนั้น
+    $stmt = $this->conn->prepare("SELECT table_id FROM tables WHERE type_id = :type_id");
+    $stmt->bindParam(':type_id', $type_id);
+    $stmt->execute();
+    $all_tables = $stmt->fetchAll(PDO::FETCH_COLUMN); // ได้ array ของ table_id
+
+    if (empty($all_tables)) {
+        return null;
+    }
+
+    // 3. หาโต๊ะที่ไม่ว่าง (status_id=1 และเวลาทับกันในช่วง 60 นาที)
+    $placeholders = implode(',', array_fill(0, count($all_tables), '?'));
+
+    $sql = "SELECT DISTINCT table_id FROM queue
+            WHERE status_id = 1
+              AND table_id IN ($placeholders)
+              AND ABS(TIMESTAMPDIFF(MINUTE, reserve_date, ?)) < 60";
+
+    $stmt2 = $this->conn->prepare($sql);
+
+    // bind: table_ids ทีละตัว + reserve_date ตัวสุดท้าย
+    $params = array_merge($all_tables, [$reserve_date]);
+    $stmt2->execute($params); // PDO รับ array ตรงๆ ได้เลย
+
+    $busy_tables = $stmt2->fetchAll(PDO::FETCH_COLUMN);
+
+    // 4. คืนโต๊ะแรกที่ว่าง
+    $available = array_values(array_diff($all_tables, $busy_tables));
+
+    return $available[0] ?? null;
 }
+}
+?>
