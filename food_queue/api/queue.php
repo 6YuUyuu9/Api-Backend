@@ -23,32 +23,35 @@ $data = json_decode(file_get_contents("php://input"), true) ?? [];
 // 1. จองคิวใหม่ (POST)
 if ($method === 'POST' && preg_match('#queue.php/add#', $url)) {
     
-    // ตรวจสอบว่าหน้าบ้านส่ง Date และ Time แยกกันมาหรือไม่
-    if (isset($data['date']) && isset($data['time'])) {
-        // กรณีส่งแยก: "2026-03-29" + "16:41" -> "2026-03-29 16:41:00"
-        $reserve_date = $data['date'] . ' ' . $data['time'] . ':00';
-    } 
-    // ถ้าส่งมารวมกันในฟิลด์เดียว (reserve_date)
-    elseif (isset($data['reserve_date'])) {
-        $reserve_date = $data['reserve_date'];
-    } 
-    // ถ้าไม่ส่งอะไรมาเลย ให้ใช้เวลาปัจจุบันของ Server
-    else {
-        $reserve_date = date('Y-m-d H:i:s');
+    $final_reserve = null;
+
+    // ตรวจสอบทุกลูกแบบที่หน้าบ้านอาจส่งมา
+    if (!empty($data['date']) && !empty($data['time'])) {
+        // ถ้าส่งแยก date: "03/29/2026", time: "04:41 PM"
+        $final_reserve = $data['date'] . ' ' . $data['time'];
+    } elseif (!empty($data['reserve_date'])) {
+        // ถ้าส่งรวมมาในชื่อ reserve_date
+        $final_reserve = $data['reserve_date'];
     }
 
-    // เรียกฟังก์ชัน create โดยส่งค่าที่จัดการแล้วเข้าไป
+    // ถ้า $final_reserve ยังว่าง (แสดงว่าหน้าบ้านส่ง key มาไม่ตรง) 
+    // ให้บังคับใช้เวลาปัจจุบันแค่ตรงนี้ที่เดียว
+    if (!$final_reserve) {
+        $final_reserve = date('Y-m-d H:i:s');
+    }
+
+    // เรียก Model โดยส่ง $final_reserve ที่เราอุตส่าห์ดักหามาได้เข้าไป
     $result = $queue->create(
         $data['user_id'], 
         $data['table_id'], 
         $data['person_count'], 
-        $reserve_date
+        $final_reserve
     );
 
     echo json_encode([
         'success' => $result,
         'message' => $result ? 'Queue added' : 'Failed to add queue',
-        'debug_date' => $reserve_date // ใส่ไว้ดูเพื่อตรวจสอบค่าที่ถูกบันทึก (ลบออกได้ภายหลัง)
+        'debug_received' => $final_reserve // << เช็คตัวนี้ใน Network Tab ว่าเป็นวันไหน
     ]);
     exit();
 }
