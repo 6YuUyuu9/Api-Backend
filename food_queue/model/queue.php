@@ -66,7 +66,7 @@ class Queue
                       WHERE status_id = 1 
                       AND NOW() > DATE_ADD(reserve_date, INTERVAL 15 MINUTE)";
         $this->conn->query($sql_auto_skip);
-    
+
         // ตรวจสอบว่ามี q.arrive_at และ q.complete_at ใน SELECT หรือยัง
         $sql = "SELECT 
                 q.queue_id, 
@@ -93,16 +93,27 @@ class Queue
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    // ดึงคิวล่าสุดของวันที่ระบุ (เช่น A05, B02)
-    public function getLatestQueueByDate($date)
+    public function getNextUpcomingQueue($date)
     {
-        $sql = "SELECT queue_name FROM " . $this->table . " 
-                WHERE DATE(reserve_date) = :target_day 
-                ORDER BY queue_id DESC LIMIT 1";
+        // ใช้ ABS(TIMESTAMPDIFF) เพื่อหาคิวที่ใกล้เคียงเวลาปัจจุบันที่สุด (ไม่ว่าจะก่อนหรือหลังนิดหน่อย)
+        // กรองเฉพาะสถานะ 1 (Reserved) เท่านั้น
+        $sql = "SELECT queue_name, reserve_date 
+            FROM " . $this->table . " 
+            WHERE DATE(reserve_date) = :target_day 
+            AND status_id = 1 
+            ORDER BY ABS(TIMESTAMPDIFF(SECOND, reserve_date, NOW())) ASC 
+            LIMIT 1";
+
         $stmt = $this->conn->prepare($sql);
         $stmt->execute([':target_day' => $date]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ? $row['queue_name'] : "ยังไม่มีคิว";
+
+        if ($row) {
+            $time = date('H:i', strtotime($row['reserve_date']));
+            return $row['queue_name'] . " (" . $time . ")";
+        }
+
+        return "ไม่มีคิวรอเรียก";
     }
 
     // นับจำนวนคิวที่ยังไม่ได้เรียก (status_id = 1) ของวันที่ระบุ
@@ -191,46 +202,45 @@ class Queue
     }
 
     public function autoMatchTable(int $person_count, string $reserve_date): ?int
-{
-    // 1. หา type_id ตามจำนวนคน
-    if ($person_count <= 2) {
-        $type_id = 1; // for2
-    } elseif ($person_count <= 4) {
-        $type_id = 2; // for4
-    } else {
-        $type_id = 3; // for6
-    }
+    {
+        // 1. หา type_id ตามจำนวนคน
+        if ($person_count <= 2) {
+            $type_id = 1; // for2
+        } elseif ($person_count <= 4) {
+            $type_id = 2; // for4
+        } else {
+            $type_id = 3; // for6
+        }
 
-    // 2. ดึงโต๊ะทุกโต๊ะในประเภทนั้น
-    $stmt = $this->conn->prepare("SELECT table_id FROM tables WHERE type_id = :type_id");
-    $stmt->bindParam(':type_id', $type_id);
-    $stmt->execute();
-    $all_tables = $stmt->fetchAll(PDO::FETCH_COLUMN); // ได้ array ของ table_id
+        // 2. ดึงโต๊ะทุกโต๊ะในประเภทนั้น
+        $stmt = $this->conn->prepare("SELECT table_id FROM tables WHERE type_id = :type_id");
+        $stmt->bindParam(':type_id', $type_id);
+        $stmt->execute();
+        $all_tables = $stmt->fetchAll(PDO::FETCH_COLUMN); // ได้ array ของ table_id
 
-    if (empty($all_tables)) {
-        return null;
-    }
+        if (empty($all_tables)) {
+            return null;
+        }
 
-    // 3. หาโต๊ะที่ไม่ว่าง (status_id=1 และเวลาทับกันในช่วง 60 นาที)
-    $placeholders = implode(',', array_fill(0, count($all_tables), '?'));
+        // 3. หาโต๊ะที่ไม่ว่าง (status_id=1 และเวลาทับกันในช่วง 60 นาที)
+        $placeholders = implode(',', array_fill(0, count($all_tables), '?'));
 
-    $sql = "SELECT DISTINCT table_id FROM queue
+        $sql = "SELECT DISTINCT table_id FROM queue
             WHERE status_id = 1
               AND table_id IN ($placeholders)
               AND ABS(TIMESTAMPDIFF(MINUTE, reserve_date, ?)) < 60";
 
-    $stmt2 = $this->conn->prepare($sql);
+        $stmt2 = $this->conn->prepare($sql);
 
-    // bind: table_ids ทีละตัว + reserve_date ตัวสุดท้าย
-    $params = array_merge($all_tables, [$reserve_date]);
-    $stmt2->execute($params); // PDO รับ array ตรงๆ ได้เลย
+        // bind: table_ids ทีละตัว + reserve_date ตัวสุดท้าย
+        $params = array_merge($all_tables, [$reserve_date]);
+        $stmt2->execute($params); // PDO รับ array ตรงๆ ได้เลย
 
-    $busy_tables = $stmt2->fetchAll(PDO::FETCH_COLUMN);
+        $busy_tables = $stmt2->fetchAll(PDO::FETCH_COLUMN);
 
-    // 4. คืนโต๊ะแรกที่ว่าง
-    $available = array_values(array_diff($all_tables, $busy_tables));
+        // 4. คืนโต๊ะแรกที่ว่าง
+        $available = array_values(array_diff($all_tables, $busy_tables));
 
-    return $available[0] ?? null;
+        return $available[0] ?? null;
+    }
 }
-}
-?>
