@@ -110,7 +110,7 @@ class Queue
 
         if ($row) {
             $time = date('H:i', strtotime($row['reserve_date']));
-            return $row['queue_name'] . " (" . $time . ")";
+            return $row['queue_name'];
         }
 
         return "ไม่มีคิวรอเรียก";
@@ -121,7 +121,8 @@ class Queue
     {
         $sql = "SELECT COUNT(*) as remaining FROM " . $this->table . " 
                 WHERE DATE(reserve_date) = :target_day 
-                AND status_id = 1";
+                AND status_id = 1
+                AND reserve_date > NOW()";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute([':target_day' => $date]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
