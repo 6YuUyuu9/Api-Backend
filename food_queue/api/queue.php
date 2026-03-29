@@ -58,6 +58,15 @@ if ($method === 'POST' && preg_match('#queue.php/add#', $url)) {
 
 // 2. ดูคิวทั้งหมด (GET)
 if ($method === 'GET' && preg_match('#queue.php/list#', $url)) {
+    $autoSkipQuery = "UPDATE queue 
+                      SET status_id = 2 
+                      WHERE status_id = 1 
+                      AND DATE_ADD(reserve_date, INTERVAL 15 MINUTE) < NOW()";
+    
+    $conn->query($autoSkipQuery); 
+    // --- จบส่วนที่เพิ่มเข้ามา ---
+
+    // หลังจาก Skip แล้วค่อยดึงข้อมูลทั้งหมดไปแสดง
     $res = $queue->getAllQueues();
     echo json_encode($res);
     exit();
