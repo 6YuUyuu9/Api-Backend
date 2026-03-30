@@ -117,6 +117,7 @@ class Queue
     }
 
     // นับจำนวนคิวที่ยังไม่ได้เรียก (status_id = 1) ของวันที่ระบุ
+    public function getRemainingQueueCount($date)
     {
         $sql = "SELECT COUNT(*) as remaining FROM " . $this->table . " 
                 WHERE DATE(reserve_date) = :target_day 
