@@ -48,7 +48,7 @@ if ($method === 'POST' && preg_match('#table.php/update#', $url)) {
 }
 
 // 4. ลบโต๊ะ (DELETE)
-if ($method === 'DELETE' && preg_match('#table.php/delete#', $url)) {
+if ($method === 'POST' && preg_match('#table.php/delete#', $url)) {
     $result = $tableObj->delete($data['table_id']);
     echo json_encode(['success' => $result]);
     exit();
