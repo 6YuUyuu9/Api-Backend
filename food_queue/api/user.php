@@ -85,7 +85,7 @@ if ($method === 'POST' && preg_match('#user.php/update#', $url)) {
 }
 
 // 6. DELETE
-if ($method === 'DELETE' && preg_match('#user.php/delete#', $url)) {
+if ($method === 'POST' && preg_match('#user.php/delete#', $url)) {
     $result = $user->delete($data['user_id']);
     echo json_encode([
         'success' => $result,

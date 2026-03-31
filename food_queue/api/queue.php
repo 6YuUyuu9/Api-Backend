@@ -135,7 +135,7 @@ if ($method === 'POST' && preg_match('#queue.php/complete#', $url)) {
 }
 
 // 4. ลบคิว (POST/DELETE)
-if ($method === 'DELETE' && preg_match('#queue.php/delete#', $url)) {
+if ($method === 'POST' && preg_match('#queue.php/delete#', $url)) {
     $result = $queue->delete($data['queue_id']);
     echo json_encode([
         'success' => $result
